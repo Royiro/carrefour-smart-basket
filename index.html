@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Carrefour Smart Basket — Static</title>
+  <style>
+    :root{--bg:#f6f7f9;--card:#fff;--text:#111;--muted:#6b7280;--brand:#111827;}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    .container{max-width:960px;margin:0 auto;padding:16px}
+    h1{font-size:1.6rem;margin:0 0 12px}
+    .card{background:var(--card);border-radius:16px;box-shadow:0 2px 10px rgba(0,0,0,.05);padding:16px;margin:12px 0}
+    label{font-size:.9rem;color:var(--muted)}
+    textarea{width:100%;min-height:180px;padding:10px;border-radius:10px;border:1px solid #e5e7eb}
+    input[type='number'],input[type='text']{padding:8px;border-radius:10px;border:1px solid #e5e7eb}
+    .row{display:grid;grid-template-columns:1fr;gap:12px}
+    @media(min-width:800px){.row{grid-template-columns:1fr 1fr}}
+    .btn{background:#111827;color:#fff;border:none;border-radius:12px;padding:10px 14px;cursor:pointer}
+    .btn.outline{background:#fff;color:#111827;border:1px solid #e5e7eb}
+    .badge{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:999px;padding:4px 10px;font-size:.8rem;margin-inline-end:6px}
+    .grid-head,.grid-row{display:grid;grid-template-columns:5fr 6fr 1fr;gap:8px;align-items:center}
+    .grid-head{color:var(--muted);font-size:.85rem}
+    .grid-row{background:#fff;border:1px solid #eee;border-radius:12px;padding:8px}
+    .right{text-align:right}
+    .muted{color:var(--muted)}
+    .spacer{height:8px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🛒 Carrefour Smart Basket — גרסה סטטית (ללא Build)</h1>
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>רשימת קניות (שורה לכל פריט)</label>
+          <textarea id="list">אורז בסמתי
+שימורי גרגירי חומוס
+טופו 1.2קילו
+דנונה פרו 1.5%
+ערמונים קלויים
+משקה סויה אלטרנטיב
+כוסמת
+עדשים ירוקות
+עדשים שחורות
+רסק עגבניות</textarea>
+          <div class="spacer"></div>
+          <label>משלוח (₪)</label>
+          <div><input id="shipping" type="number" value="30" style="width:120px"></div>
+        </div>
+        <div>
+          <label>העלה קובצי Carrefour (Price*.gz, Promo*.gz לא חובה)</label>
+          <div class="spacer"></div>
+          <input id="file" type="file" multiple accept=".gz,.csv,.zip">
+          <div class="spacer"></div>
+          <button class="btn" id="compute">חשב סל</button>
+          <span style="margin-inline-start:8px"></span>
+          <button class="btn outline" id="export">יצוא CSV</button>
+          <div class="spacer"></div>
+          <div id="status" class="muted"></div>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <span class="badge">חנות: Carrefour</span>
+      <span class="badge">תמחור: לפי הקובץ האחרון שהועלה</span>
+      <span class="badge">משלוח: <span id="shipBadge">₪30.00</span></span>
+    </div>
+
+    <div id="results" class="card" style="display:none">
+      <div class="grid-head">
+        <div>פריט מבוקש</div>
+        <div>התאמה מקטלוג Carrefour</div>
+        <div class="right">מחיר</div>
+      </div>
+      <div class="spacer"></div>
+      <div id="rows"></div>
+      <div class="spacer"></div>
+      <div class="grid-row" style="border:none;background:transparent">
+        <div></div><div class="right muted">סכום פריטים</div><div class="right"><b id="sumProducts">₪0.00</b></div>
+      </div>
+      <div class="grid-row" style="border:none;background:transparent">
+        <div></div><div class="right muted">משלוח</div><div class="right"><b id="sumShipping">₪0.00</b></div>
+      </div>
+      <div class="grid-row" style="border:none;background:transparent">
+        <div></div><div class="right">סה"כ</div><div class="right" style="font-size:1.1rem"><b id="sumGrand">₪0.00</b></div>
+      </div>
+    </div>
+
+    <div class="card muted" style="font-size:.9rem">
+      <div><b>איך עובדים עם נתוני אמת של קרפור?</b></div>
+      <ul>
+        <li>הורידו את קובצי <code>Price*.gz</code> מהפורטל של קרפור (ואופציונלית <code>Promo*.gz</code>).</li>
+        <li>העלו אותם כאן — האפליקציה תפתח, תפרסר ותחשב סל.</li>
+        <li>אפשר לשנות סכום משלוח, ולייצא את התוצאה ל-CSV.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Libraries from CDN -->
+  <script src="https://unpkg.com/fflate@0.8.1/umd/index.js"></script>
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+    const NIS = (n)=> new Intl.NumberFormat('he-IL',{style:'currency',currency:'ILS',maximumFractionDigits:2}).format(n);
+    const statusEl = document.getElementById('status');
+    const shipInput = document.getElementById('shipping');
+    const shipBadge = document.getElementById('shipBadge');
+    shipInput.addEventListener('input', ()=> shipBadge.textContent = NIS(Number(shipInput.value||0)));
+
+    function detectDelimiter(sample){ if(sample.includes('|'))return '|'; if(sample.includes('\\t'))return '\\t'; return ',';}
+    function normalizeHeb(s){ return (s||'').toLowerCase().replace(/[\"'`]/g,'').replace(/[()\\[\\]]/g,' ').replace(/\\s+/g,' ').trim(); }
+    function keywordScore(needle, haystack){
+      const n = normalizeHeb(needle); const h = normalizeHeb(haystack||'');
+      const tokens = n.split(' ').filter(Boolean); let score=0;
+      for(const t of tokens) if(h.includes(t)) score+=1;
+      return score/Math.max(tokens.length,1);
+    }
+    async function fileToText(file){
+      const buf = await file.arrayBuffer();
+      const u8 = new Uint8Array(buf);
+      try{
+        const unzipped = fflate.unzipSync({ 'file': u8 });
+        const first = Object.values(unzipped)[0];
+        return new TextDecoder('utf-8').decode(first);
+      } catch {
+        try {
+          const gunz = fflate.unzipSync({ 'file.gz': u8 });
+          const first = Object.values(gunz)[0];
+          return new TextDecoder('utf-8').decode(first);
+        } catch {
+          return new TextDecoder('utf-8').decode(u8);
+        }
+      }
+    }
+    function parseCsv(text){
+      const delimiter = detectDelimiter(text.slice(0,512));
+      const out = Papa.parse(text,{header:true,delimiter,skipEmptyLines:true});
+      return out.data || [];
+    }
+    function toCatalog(rows){
+      const codeKeys=['itemcode','item_code','barcode','itemcode‎','item_code‎','מקט','ברקוד'];
+      const nameKeys=['itemname','item_name','name','itemname‎','שם_מוצר','תיאור_מוצר'];
+      const priceKeys=['price','itemprice','unit_price','price‎','מחיר'];
+      const sizeKeys=['unit_qty','unit_of_measure','size','אריזה','כמות'];
+      const cat=[];
+      for(const r of rows){
+        const get=(keys)=>{ for(const k of keys){ const v=r[k]??r[k?.toLowerCase?.()]??r[k?.toUpperCase?.()]; if(v!==undefined&&v!==null&&String(v).length>0) return v;} };
+        const code=String(get(codeKeys)||'').trim();
+        const name=String(get(nameKeys)||'').trim();
+        const rawPrice=get(priceKeys);
+        const size=String(get(sizeKeys)||'').trim();
+        if(!name) continue;
+        const price=Number(String(rawPrice).replace(/[^0-9.]/g,''));
+        if(!isFinite(price)) continue;
+        cat.push({code,name,price,size});
+      }
+      const byKey=new Map();
+      for(const c of cat){ const k=c.code||c.name; const prev=byKey.get(k); if(!prev||c.price<prev.price) byKey.set(k,c); }
+      return Array.from(byKey.values());
+    }
+    function matchItems(lines, catalog){
+      return lines.map((line)=>{
+        line=line.trim(); if(!line) return {requested:'',matchedName:'',price:0};
+        let best=null, bestScore=0;
+        for(const c of catalog){
+          const s=keywordScore(line,c.name);
+          if(s>bestScore || (s===bestScore && best && c.price<best.price)){ best=c; bestScore=s; }
+        }
+        if(!best || bestScore<0.4) return {requested:line, matchedName:'(לא נמצאה התאמה מספקת)', price:0};
+        return {requested:line, matchedName:best.name, code:best.code, price:best.price};
+      });
+    }
+    function renderAlloc(alloc){
+      const rowsEl=document.getElementById('rows');
+      rowsEl.innerHTML='';
+      let total=0;
+      for(const r of alloc){
+        total+= (r.price||0);
+        const row=document.createElement('div'); row.className='grid-row';
+        row.innerHTML = `<div>${r.requested}</div>
+                         <div class="muted">${r.matchedName} ${r.code?`<small class="muted">(${r.code})</small>`:''}</div>
+                         <div class="right"><b>${r.price?NIS(r.price):'—'}</b></div>`;
+        rowsEl.appendChild(row);
+      }
+      document.getElementById('sumProducts').textContent=NIS(total);
+      const shipping = alloc.some(r=>r.price>0) ? Number(document.getElementById('shipping').value||0) : 0;
+      document.getElementById('sumShipping').textContent=NIS(shipping);
+      document.getElementById('sumGrand').textContent=NIS(total+shipping);
+      document.getElementById('results').style.display='block';
+    }
+    function exportCsv(alloc){
+      const rows = alloc.map(a=>({'פריט מבוקש':a.requested,'התאמה':a.matchedName,'ברקוד':a.code||'','מחיר':a.price}));
+      rows.push({'פריט מבוקש':'—','התאמה':'—','ברקוד':'—','מחיר':'—'});
+      const total = alloc.reduce((s,r)=>s+(r.price||0),0);
+      const shipping = alloc.some(r=>r.price>0) ? Number(document.getElementById('shipping').value||0) : 0;
+      rows.push({'פריט מבוקש':'סכום פריטים','התאמה':'','ברקוד':'','מחיר': total});
+      rows.push({'פריט מבוקש':'משלוח','התאמה':'','ברקוד':'','מחיר': shipping});
+      rows.push({'פריט מבוקש':'סה"כ','התאמה':'','ברקוד':'','מחיר': total+shipping});
+      const csv = Papa.unparse(rows);
+      const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download='carrefour_allocation.csv'; document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    }
+
+    document.getElementById('compute').addEventListener('click', async ()=>{
+      const files = document.getElementById('file').files;
+      if(!files.length){ statusEl.textContent='בחר/י קובץ מחיר של קרפור (Price*.gz)'; return; }
+      statusEl.textContent='טוען ומפרש קבצים…';
+      const allRows=[];
+      for(const f of files){ try{ const text=await fileToText(f); const rows=parseCsv(text); allRows.push(...rows);} catch(e){ statusEl.textContent='שגיאה בקריאת קובץ: '+(e.message||e); } }
+      const catalog = toCatalog(allRows);
+      statusEl.textContent = 'נטענו '+catalog.length.toLocaleString()+' מוצרים לקטלוג';
+      const lines = document.getElementById('list').value.split('\\n').map(s=>s.trim()).filter(Boolean);
+      const alloc = matchItems(lines, catalog);
+      renderAlloc(alloc);
+      window.__alloc = alloc;
+    });
+    document.getElementById('export').addEventListener('click', ()=>{
+      if(!window.__alloc){ statusEl.textContent='אין נתונים ליצוא'; return; }
+      exportCsv(window.__alloc);
+    });
+  </script>
+</body>
+</html>
